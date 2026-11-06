@@ -87,6 +87,10 @@ export type PlaceSheet = {
   dangers: string;
 };
 
+/** Writing status of a scene; scenes without a status are unmarked. */
+export const SCENE_STATUSES = ["draft", "revised", "final"] as const;
+export type SceneStatus = (typeof SCENE_STATUSES)[number];
+
 export type DocumentData = {
   id: string;
   title: string;
@@ -95,6 +99,7 @@ export type DocumentData = {
   chapterId?: string;
   space?: SpaceName;
   folderId?: string;
+  status?: SceneStatus;
   trashed?: boolean;
   trashedWithChapterId?: string;
   /**

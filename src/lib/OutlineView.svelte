@@ -3,12 +3,13 @@
   import { BookOpen, Plus } from "@lucide/svelte";
   import { autoResize } from "./auto-resize";
   import { chapterLabel } from "./publish/chapters";
-  import type { ChapterData } from "./publish/types";
+  import { SCENE_STATUSES, type ChapterData, type SceneStatus } from "./publish/types";
 
   type Props = {
     chapters: ChapterData[];
     chapterWordCounts: Record<string, number>;
     chapterSceneCounts: Record<string, number>;
+    chapterStatusCounts: Record<string, Record<SceneStatus, number>>;
     onAddChapter: () => string;
     onSummaryChange: (chapterId: string, summary: string) => void;
   };
@@ -17,11 +18,21 @@
     chapters,
     chapterWordCounts,
     chapterSceneCounts,
+    chapterStatusCounts,
     onAddChapter,
     onSummaryChange
   }: Props = $props();
 
   let summaryInputs: Record<string, HTMLTextAreaElement> = {};
+
+  /** Compact "3 draft · 1 revised" line; statuses without scenes are omitted. */
+  function statusSummary(counts: Record<SceneStatus, number> | undefined): string {
+    if (!counts) return "";
+    return SCENE_STATUSES
+      .filter((status) => counts[status] > 0)
+      .map((status) => `${counts[status]} ${status}`)
+      .join(" · ");
+  }
 
   let totalWords = $derived(chapters.reduce(
     (total, chapter) => total + (chapterWordCounts[chapter.id] ?? 0),
@@ -62,6 +73,7 @@
   {:else}
     <div class="outline-list">
       {#each chapters as chapter, index (chapter.id)}
+        {@const statusLine = statusSummary(chapterStatusCounts[chapter.id])}
         <article class="outline-card">
           <div class="outline-rail" aria-hidden="true">
             <span class="outline-number">{String(index + 1).padStart(2, "0")}</span>
@@ -77,6 +89,9 @@
                 {(chapterWordCounts[chapter.id] ?? 0).toLocaleString()} words
               </span>
             </header>
+            {#if statusLine}
+              <p class="outline-statuses">{statusLine}</p>
+            {/if}
             <textarea
               bind:this={summaryInputs[chapter.id]}
               class="outline-summary"
@@ -122,6 +137,7 @@
   .outline-card-header h2 { overflow: hidden; margin: 0; color: var(--text-heading); font-family: var(--interface-font); font-size: 19px; font-weight: 500; letter-spacing: -.2px; text-overflow: ellipsis; white-space: nowrap; }
   .outline-meta { flex: 0 0 auto; color: var(--text-muted); font-size: 8px; white-space: nowrap; }
   .outline-meta-divider { margin: 0 4px; color: var(--border-control); }
+  .outline-statuses { margin: 0 0 6px; color: var(--text-muted); font-size: 8px; letter-spacing: .2px; }
   .outline-summary { display: block; width: 100%; min-height: 82px; padding: 3px 0; resize: none; overflow-y: hidden; border: 0; outline: none; background: transparent; color: var(--text-body); font-family: var(--interface-font); font-size: 13px; line-height: 1.72; }
   .outline-summary::placeholder { color: var(--text-muted); font-family: Inter, ui-sans-serif, sans-serif; font-size: 10px; }
   .outline-add-card { display: flex; align-items: center; gap: 11px; min-height: 68px; padding: 13px 16px; border: 1px dashed var(--border-control); border-radius: 9px; background: transparent; color: var(--text-muted); cursor: pointer; text-align: left; }

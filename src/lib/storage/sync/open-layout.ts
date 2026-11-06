@@ -1,6 +1,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { htmlToMarkdown, markdownToHtml } from "$lib/publish/markdown";
 import { sanitizeHtml } from "$lib/sanitize";
+import { normalizeSceneStatus } from "$lib/scene-status";
 import type { ChapterData, DocumentData } from "$lib/publish/types";
 import {
   isEntityMeta,
@@ -88,11 +89,15 @@ function normalizeBody(body: string): string {
 /** Makes a document match the Markdown round trip used by the open layout. */
 export function normalizeDocument(document: DocumentData): DocumentData {
   const body = normalizeBody(document.markdownSource ?? htmlToMarkdown(document.content));
-  return {
+  const status = normalizeSceneStatus(document.status);
+  const normalized: DocumentData = {
     ...document,
     content: sanitizeHtml(markdownToHtml(body)),
     markdownSource: body
   };
+  if (status) normalized.status = status;
+  else delete normalized.status;
+  return normalized;
 }
 
 function formatYamlValue(value: unknown): string {
@@ -166,6 +171,7 @@ function documentPayload(fields: Record<string, unknown>): Record<string, unknow
     chapterId: fields.chapterId,
     space: fields.space,
     folderId: fields.folderId,
+    status: fields.status,
     trashed: fields.trashed,
     trashedWithChapterId: fields.trashedWithChapterId,
     updatedAt: fields.updatedAt,
@@ -184,6 +190,7 @@ function documentFields(document: DocumentData, meta: EntityMeta): Record<string
     chapterId: document.chapterId,
     space: document.space,
     folderId: document.folderId,
+    status: document.status,
     trashed: document.trashed,
     trashedWithChapterId: document.trashedWithChapterId,
     updatedAt: meta.updatedAt,
@@ -256,6 +263,8 @@ function decodeDocument(
   else if (fields.chapterId === null) delete record.chapterId;
   if (typeof fields.space === "string") record.space = fields.space as DocumentData["space"];
   if (typeof fields.folderId === "string") record.folderId = fields.folderId;
+  const status = normalizeSceneStatus(fields.status);
+  if (status) record.status = status;
   if (fields.trashed === true) record.trashed = true;
   if (typeof fields.trashedWithChapterId === "string") {
     record.trashedWithChapterId = fields.trashedWithChapterId;

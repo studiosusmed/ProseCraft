@@ -160,6 +160,7 @@
     isAutomaticallyNumberedChapter as isAutoNumberedChapter
   } from "$lib/publish/chapters";
   import { htmlToMarkdown, markdownToHtml } from "$lib/publish/markdown";
+  import { countByStatus, nextSceneStatus, statusLabel } from "$lib/scene-status";
   import {
     defaultPublishOptions,
     normalizePublishOptions,
@@ -893,6 +894,12 @@
     liveChapters.map((chapter) => [
       chapter.id,
       documents.filter((doc) => doc.chapterId === chapter.id && !doc.space && !doc.trashed).length
+    ])
+  ));
+  let chapterStatusCounts = $derived.by(() => Object.fromEntries(
+    liveChapters.map((chapter) => [
+      chapter.id,
+      countByStatus(documents.filter((doc) => doc.chapterId === chapter.id && !doc.space))
     ])
   ));
   let calendarCells = $derived.by(() => {
@@ -5214,6 +5221,13 @@
     persistChapters();
   }
 
+  function cycleSceneStatus(id: string) {
+    documents = documents.map((doc) => doc.id === id
+      ? { ...doc, status: nextSceneStatus(doc.status) }
+      : doc);
+    persist();
+  }
+
   function moveToTrash(id: string) {
     documents = documents.map((doc) => doc.id === id ? { ...doc, trashed: true } : doc);
     if (activeDocumentId === id) {
@@ -6466,6 +6480,15 @@
                       <span class="scene-mark">¶</span>
                       <span class="tree-name">{doc.title || "Untitled scene"}</span>
                     </button>
+                    <button
+                      class="scene-status"
+                      class:draft={doc.status === "draft"}
+                      class:revised={doc.status === "revised"}
+                      class:final={doc.status === "final"}
+                      aria-label="Status of {doc.title || 'Untitled scene'}: {statusLabel(doc.status)}. Click to change"
+                      title="Status: {statusLabel(doc.status)}"
+                      onclick={() => cycleSceneStatus(doc.id)}
+                    ><span class="scene-status-dot" aria-hidden="true"></span></button>
                     <button class="row-action" aria-label="Move {doc.title} to Trash" title="Move to Trash" onclick={() => moveToTrash(doc.id)}><Trash2 size={13} aria-hidden="true" /></button>
                     <div class="row-menu-wrap">
                       <button
@@ -7064,6 +7087,7 @@
             chapters={liveChapters}
             {chapterWordCounts}
             {chapterSceneCounts}
+            {chapterStatusCounts}
             onAddChapter={addOutlineChapter}
             onSummaryChange={updateChapterSummary}
           />
@@ -8575,6 +8599,14 @@
   .scene-mark { flex: 0 0 auto; color: var(--text-faint); font-family: Georgia, serif; font-size: 13px; }
   .row-action { width: 21px; height: 21px; opacity: .45; font-size: 15px; }
   .document-row:hover .row-action, .row-action:focus-visible { opacity: 1; }
+  .scene-status { display: grid; width: 19px; height: 23px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; cursor: pointer; opacity: .45; }
+  .document-row:hover .scene-status, .scene-status:focus-visible { opacity: 1; }
+  .scene-status:hover { background: var(--hover-bg); }
+  .scene-status:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .scene-status-dot { width: 8px; height: 8px; border: 1px solid var(--text-faint); border-radius: 50%; background: transparent; }
+  .scene-status.draft .scene-status-dot { border-color: var(--status-draft, var(--text-muted)); background: var(--status-draft, var(--text-muted)); }
+  .scene-status.revised .scene-status-dot { border-color: var(--status-revised, var(--accent)); background: var(--status-revised, var(--accent)); }
+  .scene-status.final .scene-status-dot { border-color: var(--status-final, var(--success)); background: var(--status-final, var(--success)); }
   .restore-action, .delete-action { opacity: 1; }
   .research-file-mark { min-width: 20px; font-size: 9px; letter-spacing: -.02em; text-align: center; }
   .research-link-mark { color: var(--text-muted); font-family: inherit; font-size: 12px; }
