@@ -1,5 +1,6 @@
 import { sha256 } from "@noble/hashes/sha2.js";
-import { htmlToMarkdown, markdownToHtml } from "$lib/publish/markdown";
+import { normalizeFootnotes } from "$lib/footnotes";
+import { htmlToMarkdown, markdownToDocument } from "$lib/publish/markdown";
 import { sanitizeHtml } from "$lib/sanitize";
 import type { ChapterData, DocumentData } from "$lib/publish/types";
 import {
@@ -87,12 +88,21 @@ function normalizeBody(body: string): string {
 
 /** Makes a document match the Markdown round trip used by the open layout. */
 export function normalizeDocument(document: DocumentData): DocumentData {
-  const body = normalizeBody(document.markdownSource ?? htmlToMarkdown(document.content));
-  return {
+  const body = normalizeBody(
+    document.markdownSource ?? htmlToMarkdown(document.content, document.footnotes)
+  );
+  const parsed = markdownToDocument(body);
+  const footnotes = parsed.footnotes.length > 0
+    ? parsed.footnotes
+    : normalizeFootnotes(document.footnotes);
+  const next: DocumentData = {
     ...document,
-    content: sanitizeHtml(markdownToHtml(body)),
+    content: sanitizeHtml(parsed.html),
     markdownSource: body
   };
+  if (footnotes !== undefined) next.footnotes = footnotes;
+  else delete next.footnotes;
+  return next;
 }
 
 function formatYamlValue(value: unknown): string {
@@ -169,6 +179,7 @@ function documentPayload(fields: Record<string, unknown>): Record<string, unknow
     trashed: fields.trashed,
     trashedWithChapterId: fields.trashedWithChapterId,
     labelId: fields.labelId,
+    footnotes: fields.footnotes,
     updatedAt: fields.updatedAt,
     revision: fields.revision,
     updatedBy: fields.updatedBy,
@@ -188,6 +199,7 @@ function documentFields(document: DocumentData, meta: EntityMeta): Record<string
     trashed: document.trashed,
     trashedWithChapterId: document.trashedWithChapterId,
     labelId: document.labelId,
+    footnotes: normalizeFootnotes(document.footnotes),
     updatedAt: meta.updatedAt,
     revision: meta.revision,
     updatedBy: meta.updatedBy,
@@ -248,10 +260,18 @@ function decodeDocument(
   const external = storedHash !== expectedHash;
   const finalMeta = external ? bumpMeta(meta, now) : meta;
 
+  const parsedBody = markdownToDocument(parsed.body);
+  const fieldFootnotes = normalizeFootnotes(fields.footnotes);
+  const footnotes = external
+    ? (parsedBody.footnotes.length > 0 ? parsedBody.footnotes : fieldFootnotes)
+    : (fieldFootnotes !== undefined
+      ? fieldFootnotes
+      : (parsedBody.footnotes.length > 0 ? parsedBody.footnotes : undefined));
+
   const record: DocumentData = {
     id: fields.id,
     title: typeof fields.title === "string" ? fields.title : "",
-    content: sanitizeHtml(markdownToHtml(parsed.body)),
+    content: sanitizeHtml(parsedBody.html),
     markdownSource: parsed.body
   };
   if (typeof fields.chapterId === "string") record.chapterId = fields.chapterId;
@@ -263,6 +283,7 @@ function decodeDocument(
     record.trashedWithChapterId = fields.trashedWithChapterId;
   }
   if (typeof fields.labelId === "string") record.labelId = fields.labelId;
+  if (footnotes !== undefined) record.footnotes = footnotes;
   if (isObject(fields.character)) record.character = fields.character as DocumentData["character"];
   if (isObject(fields.place)) record.place = fields.place as DocumentData["place"];
 
@@ -768,7 +789,9 @@ export async function writeOpenProject(
   for (const document of project.project.documents) {
     const meta = project.entities.documents[document.id];
     if (!meta || meta.deletedAt !== null) continue;
-    const body = normalizeBody(document.markdownSource ?? htmlToMarkdown(document.content));
+    const body = normalizeBody(
+      document.markdownSource ?? htmlToMarkdown(document.content, document.footnotes)
+    );
     const path = `${dir}/${DOCUMENTS_DIR}/${safeName(document.id)}.md`;
     await writeIfChanged(fs, path, serializeMarkdown(documentFields(document, meta), body));
     documentPaths.add(path);
